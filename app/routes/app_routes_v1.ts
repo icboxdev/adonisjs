@@ -1,0 +1,36 @@
+import AppKeysController from '#controllers/app_keys_controller'
+import AppsController from '#controllers/apps_controller'
+import AuthController from '#controllers/auth_controller'
+import UsersController from '#controllers/users_controller'
+import { UserRole } from '#services/auth_service'
+import { middleware } from '#start/kernel'
+import router from '@adonisjs/core/services/router'
+
+router
+  .group(() => {
+    router.post('email/send', [AppsController, 'sendEmail']).middleware(middleware.authRole(UserRole.USER))
+    router.post('login', [AuthController, 'login'])
+    router.post('password/reset-request', [AuthController, 'passwordResetRequest'])
+    router.post('password/reset', [AuthController, 'passwordReset'])
+
+    router
+      .group(() => {
+        router.post('logout', [AuthController, 'logout'])
+        router.post('revoke', [AuthController, 'revoke'])
+        router.get('me', [AuthController, 'me'])
+        router.put('me', [AuthController, 'updateMe'])
+        router.post('email/verify', [AuthController, 'emailVerify'])
+        router.post('email/verify-request', [AuthController, 'emailverifyRequest'])
+      })
+      .prefix('auth')
+      .middleware(middleware.authRole(UserRole.VIEW))
+
+    router
+      .group(() => {
+        router.resource('users', UsersController).apiOnly().as('admin.users')
+        router.resource('keys', AppKeysController).apiOnly().as('admin.keys')
+      })
+      .prefix('admin')
+      // .middleware(middleware.authRole(UserRole.ADMIN))
+  })
+  .prefix('api')
