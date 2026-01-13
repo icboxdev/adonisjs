@@ -2,6 +2,7 @@ import User from '#models/user'
 import { userCreateValidator, userUpdateValidator } from '#validators/app_validators'
 import type { HttpContext } from '@adonisjs/core/http'
 import logger from '@adonisjs/core/services/logger'
+import { errors } from '@vinejs/vine'
 
 export default class UsersController {
   async index({ response }: HttpContext) {
@@ -20,6 +21,12 @@ export default class UsersController {
       const user = await User.create(payload)
       return response.created(user.serialize())
     } catch (error) {
+      if (error instanceof errors.E_VALIDATION_ERROR) {
+        return response.unprocessableEntity({
+          message: 'Validation failure',
+          errors: error.messages,
+        })
+      }
       logger.error(error.message)
       return response.internalServerError({ message: 'Falha ao criar usuário' })
     }
