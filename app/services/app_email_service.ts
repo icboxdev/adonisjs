@@ -22,10 +22,10 @@ export interface EmailPayload {
   priority?: 'high' | 'normal' | 'low'
 }
 
-export class AppEmailService {
+export class EmailService {
   static async send(payload: EmailPayload): Promise<void> {
     await mail.send((message) => {
-      AppEmailService.buildMessage(message, payload)
+      EmailService.buildMessage(message, payload)
     })
   }
 

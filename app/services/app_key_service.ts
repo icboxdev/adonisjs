@@ -82,7 +82,7 @@ export class AppKeyService {
   static async db_create(params: {
     description: string
     value?: string
-    active: boolean
+    isActive: boolean
     daysExpires?: number
     permission?: string[]
   }): Promise<AppKey> {
@@ -90,7 +90,7 @@ export class AppKeyService {
 
     const key = await AppKey.create({
       value,
-      active: params.active,
+      isActive: params.isActive,
       description: params.description,
       permission: params.permission,
       expiresAt: this.calculateExpiration(params.daysExpires),
@@ -107,7 +107,7 @@ export class AppKeyService {
     payload: {
       description?: string
       daysExpires?: number
-      active?: boolean
+      isActive?: boolean
       permission?: string[]
     }
   }): Promise<AppKey> {
@@ -180,17 +180,17 @@ export class AppKeyService {
     /* ---------------------------------------------------------------------- */
 
     await AppKey.query()
-      .where('active', true)
+      .where('is_active', true)
       .whereNotNull('expires_at')
       .where('expires_at', '<=', now.toISO())
-      .update({ active: false })
+      .update({ is_active: false })
 
     /* ---------------------------------------------------------------------- */
     /* 2. Busca apenas chaves válidas                                          */
     /* ---------------------------------------------------------------------- */
 
     const keys = await AppKey.query()
-      .where('active', true)
+      .where('is_active', true)
       .where((query) => {
         query.whereNull('expires_at').orWhere('expires_at', '>', now.toISO())
       })
@@ -223,7 +223,7 @@ export class AppKeyService {
   }
 
   static async disableKey(id: number): Promise<void> {
-    await AppKey.query().where('id', id).update({ active: false })
+    await AppKey.query().where('id', id).update({ isActive: false })
     await this.clearActiveCache()
   }
 

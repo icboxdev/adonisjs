@@ -1,4 +1,4 @@
-import { AppEmailService } from '#services/app_email_service'
+import { EmailService } from '#services/app_email_service'
 import { sendEmailValidator } from '#validators/app_validators'
 import type { HttpContext } from '@adonisjs/core/http'
 import logger from '@adonisjs/core/services/logger'
@@ -7,7 +7,7 @@ export default class AppsController {
     async sendEmail({ request, response }: HttpContext) {
         try {
             const payload = await request.validateUsing(sendEmailValidator)
-            await AppEmailService.send(payload)
+            await EmailService.send(payload)
             logger.info('Email sent successfully', {
                 to: payload.to,
                 subject: payload.subject,

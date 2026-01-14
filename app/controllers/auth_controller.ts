@@ -1,165 +1,270 @@
+import type { HttpContext } from '@adonisjs/core/http'
 import User from '#models/user'
-import { AuthService } from '#services/auth_service'
-import cache from '#start/cache'
+import { AuthService } from '#services/auth/auth_services'
+import { UserService } from '#services/user/user_service'
 import {
   authUpdateValidator,
   RequestEmailValidator,
   passwordResetValidator,
 } from '#validators/app_validators'
-import type { HttpContext } from '@adonisjs/core/http'
+import { errors as vineErrors } from '@vinejs/vine'
+import { Exception } from '@adonisjs/core/exceptions'
 import logger from '@adonisjs/core/services/logger'
 
 export default class AuthController {
   async login({ request, response }: HttpContext) {
-    const { email, password } = request.only(['email', 'password'])
-    const ip = request.ip()
-
     try {
-      const { token, user } = await AuthService.obtenerToken({ email, password, ip })
-      return response.ok({ message: 'Login successful', token, user })
+      const { email, password } = request.only(['email', 'password'])
+      const ip = request.ip()
+
+      const { token, user } = await AuthService.login({ email, password, ip })
+
+      return response.ok({
+        message: 'Login realizado com sucesso',
+        data: { token, user },
+      })
     } catch (error) {
       if (error.status === 401) {
         return response.unauthorized({ message: error.message })
       }
-      logger.error('Login error', { error: error.message, email, ip })
-      return response.internalServerError({ message: 'Internal server error during login' })
+
+      if (error.status === 403) {
+        return response.forbidden({ message: error.message })
+      }
+
+      if (error.status === 429) {
+        return response.tooManyRequests({ message: error.message })
+      }
+
+      logger.error({ err: error, email: request.input('email'), ip: request.ip() }, 'Login failed')
+      return this.handleError(error, response, 'Falha ao realizar login')
     }
   }
 
   async logout({ auth, response }: HttpContext) {
     try {
-      const user = auth.user
-      if (!user) {
-        return response.unauthorized({ message: 'No user authenticated' })
-      }
+      const user = auth.getUserOrFail()
       const currentToken = user.currentAccessToken
-      if (currentToken) {
-        await User.accessTokens.delete(user, currentToken.identifier)
+
+      if (!currentToken) {
+        return response.badRequest({ message: 'Nenhum token ativo encontrado' })
       }
-      await cache.delete({ key: `user:${user.id}` })
-      return response.ok({ message: 'Logout successful' })
+
+      await User.accessTokens.delete(user, currentToken.identifier)
+      await UserService.invalidateUserCache(user.id)
+
+      return response.ok({ message: 'Logout realizado com sucesso' })
     } catch (error) {
-      logger.error('Logout error', { error: error.message, userId: auth.user?.id })
-      return response.internalServerError({ message: 'Internal server error during logout' })
+      logger.error({ err: error, userId: auth.user?.id }, 'Logout failed')
+      return this.handleError(error, response, 'Falha ao realizar logout')
     }
   }
 
-  async revoke({ auth, response }: HttpContext) {
+  async revokeAll({ auth, response }: HttpContext) {
     try {
-      const user = auth.user
-      if (!user) {
-        return response.unauthorized({ message: 'No user authenticated' })
-      }
-      await AuthService.revokeAllTokens(user)
-      return response.ok({ message: 'Revocation successful' })
+      const user = auth.getUserOrFail()
+      await AuthService.logout(user)
+
+      return response.ok({ message: 'Todos os tokens foram revogados com sucesso' })
     } catch (error) {
-      logger.error('Revocation error', { error: error.message, userId: auth.user?.id })
-      return response.internalServerError({ message: 'Internal server error during revocation' })
+      logger.error({ err: error, userId: auth.user?.id }, 'Token revocation failed')
+      return this.handleError(error, response, 'Falha ao revogar tokens')
     }
   }
 
   async me({ auth, response }: HttpContext) {
     try {
-      const user = auth.user
-      if (!user) {
-        return response.unauthorized({ message: 'No user authenticated' })
-      }
+      const user = auth.getUserOrFail()
+      const authUser = await AuthService.getMe(user)
 
-      const authUser = await AuthService.get_me(user)
-      return response.ok(authUser)
+      return response.ok({ data: authUser.serialize() })
     } catch (error) {
       if (error.status === 403) {
         return response.forbidden({ message: error.message })
       }
-      logger.error('Get me error', { error: error.message, userId: auth.user?.id })
-      return response.internalServerError({ message: 'Internal server error fetching user data' })
+
+      logger.error({ err: error, userId: auth.user?.id }, 'Failed to fetch user data')
+      return this.handleError(error, response, 'Falha ao buscar dados do usuário')
     }
   }
 
   async updateMe({ auth, request, response }: HttpContext) {
     try {
-      const user = await AuthService.get_me(auth.user as User)
+      const user = auth.getUserOrFail()
       const payload = await request.validateUsing(authUpdateValidator)
-      user?.merge(payload)
-      await user?.save()
-      await cache.delete({ key: `user:${user.id}` })
-      return response.ok(user)
+
+      if (payload.email && payload.email !== user.email) {
+        const isBlacklisted = await AuthService.isBlacklisted({
+          email: payload.email,
+          username: payload.email,
+        })
+
+        if (isBlacklisted) {
+          return response.forbidden({
+            message: 'Este email não pode ser utilizado',
+          })
+        }
+      }
+
+      const updatedUser = await AuthService.updateUser(user, payload)
+
+      return response.ok({
+        message: 'Dados atualizados com sucesso',
+        data: updatedUser,
+      })
     } catch (error) {
-      logger.error('Update me error', { error: error.message, userId: auth.user?.id })
-      return response.internalServerError({ message: 'Internal server error updating user data' })
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.unprocessableEntity({
+          message: 'Erro de validação',
+          errors: error.messages,
+        })
+      }
+
+      logger.error({ err: error, userId: auth.user?.id }, 'Failed to update user data')
+      return this.handleError(error, response, 'Falha ao atualizar dados do usuário')
     }
   }
 
-  async emailverifyRequest({ request, auth, response }: HttpContext) {
+  async requestEmailVerification({ auth, request, response }: HttpContext) {
     try {
-      const user = auth.user as User
+      const user = auth.getUserOrFail()
       const ip = request.ip()
+
       if (user.emailVerifiedAt) {
-        return response.badRequest({ message: 'E-mail já verificado' })
+        return response.badRequest({
+          message: 'E-mail já verificado',
+        })
       }
-      const success = await AuthService.emailverifyRequest(user, ip)
+
+      const success = await AuthService.requestEmailVerification(user, ip)
+
       if (!success) {
         return response.tooManyRequests({
           message: 'Muitas tentativas. Tente novamente mais tarde.',
         })
       }
-      return response.ok({ message: 'E-mail de verificação enviado com sucesso' })
-    } catch (error) {
-      logger.error('Password request reset error', { error: error.message })
-      return response.internalServerError({
-        message: 'Internal server error during password reset request',
+
+      return response.ok({
+        message: 'E-mail de verificação enviado com sucesso',
       })
+    } catch (error) {
+      logger.error({ err: error, userId: auth.user?.id }, 'Email verification request failed')
+      return this.handleError(error, response, 'Falha ao solicitar verificação de e-mail')
     }
   }
 
-  async emailVerify({ auth, request, response }: HttpContext) {
+  async verifyEmail({ auth, request, response }: HttpContext) {
     try {
-      const user = auth.user as User
+      const user = auth.getUserOrFail()
       const { token } = request.only(['token'])
       const ip = request.ip()
-      if (!user.emailVerifiedAt) {
-        const success = await AuthService.emailVerify(user.email, token, ip)
-        if (success) {
-          return response.ok({ message: 'E-mail verificado com sucesso' })
-        }
+
+      if (user.emailVerifiedAt) {
+        return response.badRequest({
+          message: 'E-mail já verificado',
+        })
       }
-    } catch (error) {
-      logger.error('Password request reset error', { error: error.message })
-      return response.internalServerError({
-        message: 'Internal server error during password reset request',
+
+      if (!token) {
+        return response.badRequest({
+          message: 'Token de verificação é obrigatório',
+        })
+      }
+
+      await AuthService.verifyEmail(user.email, token, ip)
+
+      return response.ok({
+        message: 'E-mail verificado com sucesso',
       })
+    } catch (error) {
+      if (error.status === 400) {
+        return response.badRequest({ message: error.message })
+      }
+
+      logger.error({ err: error, userId: auth.user?.id }, 'Email verification failed')
+      return this.handleError(error, response, 'Falha ao verificar e-mail')
     }
   }
 
-  async passwordResetRequest({ request, response }: HttpContext) {
+  async requestPasswordReset({ request, response }: HttpContext) {
     try {
       const { email } = await request.validateUsing(RequestEmailValidator)
       const ip = request.ip()
-      const success = await AuthService.passwordResetRequest(email, ip)
-      if (success) {
-        return response.ok({ message: 'Password reset request sent successfully' })
+
+      const success = await AuthService.requestPasswordReset(email, ip)
+
+      if (!success) {
+        return response.tooManyRequests({
+          message: 'Muitas tentativas. Tente novamente mais tarde.',
+        })
       }
-    } catch (error) {
-      logger.error('Password request reset error', { error: error.message })
-      return response.internalServerError({
-        message: 'Internal server error during password reset request',
+
+      return response.ok({
+        message: 'Instruções de recuperação de senha enviadas para o e-mail',
       })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.unprocessableEntity({
+          message: 'Erro de validação',
+          errors: error.messages,
+        })
+      }
+
+      if (error.status === 404) {
+        return response.ok({
+          message: 'Se o e-mail existir, você receberá as instruções em breve',
+        })
+      }
+
+      logger.error({ err: error, email: request.input('email') }, 'Password reset request failed')
+      return this.handleError(error, response, 'Falha ao solicitar recuperação de senha')
     }
   }
 
-  async passwordReset({ request, response }: HttpContext) {
+  async resetPassword({ request, response }: HttpContext) {
     try {
       const { email, token, password } = await request.validateUsing(passwordResetValidator)
       const ip = request.ip()
-      const success = await AuthService.passwordReset({ email, token, password, ip })
-      if (success) {
-        return response.ok({ message: 'Password reset successful' })
-      }
+
+      await AuthService.resetPassword({ email, token, password, ip })
+
+      return response.ok({
+        message: 'Senha redefinida com sucesso',
+      })
     } catch (error) {
-      logger.error('Password reset error', { error: error.message })
-      return response.internalServerError({
-        message: 'Internal server error during password reset',
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.unprocessableEntity({
+          message: 'Erro de validação',
+          errors: error.messages,
+        })
+      }
+
+      if (error.status === 400) {
+        return response.badRequest({ message: error.message })
+      }
+
+      if (error.status === 403) {
+        return response.forbidden({ message: error.message })
+      }
+
+      logger.error({ err: error }, 'Password reset failed')
+      return this.handleError(error, response, 'Falha ao redefinir senha')
+    }
+  }
+
+  private handleError(error: any, response: HttpContext['response'], fallbackMessage: string) {
+    if (error instanceof Exception) {
+      const status = error.status || 500
+      logger.error({ err: error, status }, error.message)
+
+      return response.status(status).send({
+        message: error.message,
       })
     }
+
+    logger.error({ err: error }, fallbackMessage)
+    return response.internalServerError({
+      message: fallbackMessage,
+    })
   }
 }

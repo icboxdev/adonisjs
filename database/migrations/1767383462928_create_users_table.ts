@@ -6,7 +6,8 @@ export default class extends BaseSchema {
   async up() {
     this.schema.createTable(this.tableName, (table) => {
       table.increments('id').notNullable()
-      table.boolean('active').notNullable().defaultTo(true)
+      table.boolean('is_active').notNullable().defaultTo(true)
+      table.boolean('is_deleted').notNullable().defaultTo(false)
       table.string('name', 96).nullable()
       table.string('last_name', 128).nullable()
       table.string('email', 254).notNullable().unique()
@@ -17,6 +18,7 @@ export default class extends BaseSchema {
       table.jsonb('settings').nullable()
       table.datetime('last_login_at').nullable()
       table.string('last_ip', 50).nullable()
+      table.timestamp('deleted_at').nullable()
       table.timestamp('created_at').notNullable()
       table.timestamp('updated_at').nullable()
     })

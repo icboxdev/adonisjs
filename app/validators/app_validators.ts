@@ -22,6 +22,7 @@ export const passwordResetValidator = vine.compile(
 
 export const authUpdateValidator = vine.compile(
   vine.object({
+    email: vine.string().email().normalizeEmail().trim().optional(),
     name: vine.string().minLength(3).maxLength(96).trim().optional(),
     lastName: vine.string().minLength(3).maxLength(128).trim().optional(),
     password: vine
@@ -45,7 +46,7 @@ export const userCreateValidator = vine.compile(
       .maxLength(32)
       .trim()
       .confirmed({ confirmationField: 'passwordConfirmation' }),
-    active: vine.boolean(),
+    isActive: vine.boolean(),
     role: vine.enum(['view', 'user', 'admin', 'super'] as const),
     username: vine.string().minLength(6).maxLength(128).trim(),
     lastName: vine.string().minLength(3).maxLength(128).trim(),
@@ -66,7 +67,7 @@ export const userUpdateValidator = vine.compile(
       .maxLength(32)
       .trim()
       .confirmed({ confirmationField: 'passwordConfirmation' }),
-    active: vine.boolean().optional(),
+    isActive: vine.boolean().optional(),
     role: vine.enum(['view', 'user', 'admin', 'super'] as const).optional(),
     username: vine.string().minLength(6).maxLength(128).trim().optional(),
     lastName: vine.string().minLength(3).maxLength(128).trim().optional(),
@@ -86,7 +87,7 @@ export const appKeyStoreValidator = vine.compile(
   vine.object({
     description: vine.string().minLength(3).maxLength(255).trim(),
     value: vine.string().minLength(1).trim().optional(),
-    active: vine.boolean(),
+    isActive: vine.boolean(),
     daysExpires: vine.number(),
     permission: vine.array(vine.string()).optional(),
   })
@@ -97,7 +98,7 @@ export const appKeyUpdateValidator = vine.compile(
     daysExpires: vine.number().optional(),
     description: vine.string().minLength(3).maxLength(255).trim().optional(),
     permission: vine.array(vine.string()).optional(),
-    active: vine.boolean().optional(),
+    isActive: vine.boolean().optional(),
   })
 )
 

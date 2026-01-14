@@ -12,7 +12,7 @@ export default class AppKey extends BaseModel {
   declare value: string
 
   @column()
-  declare active: boolean
+  declare isActive: boolean
 
   @column({
     prepare: (value: string[] | null) => {

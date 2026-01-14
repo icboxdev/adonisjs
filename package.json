@@ -5,6 +5,7 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
+    "start:prod": "node build/ace migration:run --force && node build/bin/server.js",
     "start": "node bin/server.js",
     "build": "node ace build",
     "dev": "node ace serve --hmr",
