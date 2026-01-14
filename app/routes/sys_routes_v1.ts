@@ -10,6 +10,7 @@ router
 
     router
       .group(() => {
+        router.get('/', [UsersController, 'index']).as('sys.users.index')
         router.get('/:id', [UsersController, 'show']).as('sys.users.show')
         router.delete('/:id/anonymize', [UsersController, 'destroy']).as('sys.users.anonymize')
         router.delete('/:id', [UsersController, 'destroy_register']).as('sys.users.delete_register')
