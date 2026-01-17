@@ -1,5 +1,5 @@
-import AuthDeleted from '#models/auth_deleted'
-import User from '#models/user'
+import AuthDeleted from '#models/users/auth_deleted'
+import User from '#models/users/user'
 import { createHash } from 'crypto'
 import { Exception } from '@adonisjs/core/exceptions'
 import logger from '@adonisjs/core/services/logger'
@@ -30,11 +30,7 @@ export class BlacklistService {
         throw new Exception('Usuário não encontrado', { status: 404 })
       }
 
-      if (user.isDeleted) {
-        throw new Exception('Usuário já está na lista negra', { status: 400 })
-      }
-
-      const emailHash = this.hashValue(user.email || user.username)
+      const emailHash = this.hashValue(user.email)
 
       await AuthDeleted.create({
         userId: user.id.toString(),

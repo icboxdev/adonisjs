@@ -1,7 +1,5 @@
-// import AppKeysController from '#controllers/app_keys_controller'
 import AppsController from '#controllers/apps_controller'
-import AuthController from '#controllers/auth_controller'
-// import UsersController from '#controllers/users_controller'
+import AuthController from '#controllers/auth/auth_controller'
 import { UserRole } from '#services/auth/role_service'
 import { middleware } from '#start/kernel'
 import router from '@adonisjs/core/services/router'

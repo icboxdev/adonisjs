@@ -1,8 +1,7 @@
-import User from '#models/user'
+import User from '#models/users/user'
 import { DateTime } from 'luxon'
 import { EmailService } from '#services/app_email_service'
 import CacheService from '#start/cache'
-import { sharedCache } from '#services/shared/cache_service'
 import { RateLimiter } from '#services/security/rate_limiter'
 import { TokenService } from '#services/auth/token_service'
 
@@ -23,7 +22,7 @@ export class EmailVerificationService {
 
   static async requestEmailVerification(params: EmailVerificationRequestParams): Promise<boolean> {
     const { user, ip = 'unknown' } = params
-    const normalizedEmail = user.email || user.username
+    const normalizedEmail = user.email
 
     const rateLimitCheck = await RateLimiter.check({
       identifier: `verify:${normalizedEmail.trim().toLowerCase()}`,
@@ -78,14 +77,14 @@ export class EmailVerificationService {
     email: string,
     ip: string
   ): Promise<void> {
-    await sharedCache.user.invalidateUser(userId)
+    await CacheService.deleteSingle('users', userId)
     await CacheService.delete(this.getVerifyKey(email))
     await RateLimiter.clearAttempts(`verify:${email}`, ip)
   }
 
   private static async sendVerificationEmail(user: User, token: string): Promise<void> {
     await EmailService.send({
-      to: user.email || user.username,
+      to: user.email,
       subject: 'Verificação de E-mail',
       isHtml: true,
       body: `

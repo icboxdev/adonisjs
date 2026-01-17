@@ -29,4 +29,11 @@ export default class CacheService {
   static async deleteMultiple(keys: string[]): Promise<void> {
     await Promise.all(keys.map((key) => this.delete(key)))
   }
+  static async deleteSingle(key: string, id?: number): Promise<void> {
+    const keys: string[] = [key]
+    if (id) {
+      keys.push(`${key}:${id}`)
+    }
+    await CacheService.deleteMultiple(keys)
+  }
 }

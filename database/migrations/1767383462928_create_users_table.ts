@@ -10,7 +10,6 @@ export default class extends BaseSchema {
       table.boolean('is_deleted').notNullable().defaultTo(false)
       table.string('name', 96).nullable()
       table.string('email', 254).nullable().unique()
-      table.string('username', 128).notNullable().unique()
       table.string('password').notNullable()
       table.string('role', 10).nullable().defaultTo('view')
       table.datetime('email_verified_at').nullable()
@@ -20,6 +19,8 @@ export default class extends BaseSchema {
       table.timestamp('deleted_at').nullable()
       table.timestamp('created_at').notNullable()
       table.timestamp('updated_at').nullable()
+      
+      table.comment('Gerenciamento de usuários')
     })
   }
 

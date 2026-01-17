@@ -1,9 +1,8 @@
-import User from '#models/user'
+import User from '#models/users/user'
 import { Exception } from '@adonisjs/core/exceptions'
 import { DateTime } from 'luxon'
 import { TokenService } from './token_service.js'
 import { RateLimiter } from '../security/rate_limiter.js'
-import { sharedCache } from '#services/shared/cache_service'
 import CacheService from '#start/cache'
 import { EmailService } from '#services/app_email_service'
 
@@ -92,14 +91,14 @@ export class PasswordService {
     email: string,
     ip: string
   ): Promise<void> {
-    await sharedCache.user.invalidateUser(userId)
+    await CacheService.deleteSingle('users', userId)
     await CacheService.delete(this.getResetKey(email))
     await RateLimiter.clearAttempts(`reset:${email}`, ip)
   }
 
   private static async sendResetEmail(user: User, token: string): Promise<void> {
     await EmailService.send({
-      to: user.email || user.username,
+      to: user.email,
       subject: 'Recuperação de senha',
       isHtml: true,
       body: `
@@ -113,7 +112,7 @@ export class PasswordService {
 
   private static async sendSuccessEmail(user: User, ip: string): Promise<void> {
     await EmailService.send({
-      to: user.email || user.username,
+      to: user.email,
       subject: 'Senha alterada com sucesso',
       isHtml: true,
       body: `
@@ -128,7 +127,7 @@ export class PasswordService {
 
   private static async sendBlockedNotification(user: User, ip: string): Promise<void> {
     await EmailService.send({
-      to: user.email || user.username,
+      to: user.email,
       subject: 'Tentativas excessivas de recuperação de senha',
       isHtml: true,
       body: `

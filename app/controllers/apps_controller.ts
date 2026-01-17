@@ -1,9 +1,16 @@
 import { EmailService } from '#services/app_email_service'
+import { RoleService } from '#services/role_service'
 import { sendEmailValidator } from '#validators/app_validators'
 import type { HttpContext } from '@adonisjs/core/http'
 import logger from '@adonisjs/core/services/logger'
 
 export default class AppsController {
+
+    async getModules({ response }: HttpContext) {
+        const modules = await RoleService.getModules()
+        return response.ok(modules)
+    }
+
     async sendEmail({ request, response }: HttpContext) {
         try {
             const payload = await request.validateUsing(sendEmailValidator)

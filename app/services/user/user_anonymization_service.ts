@@ -1,10 +1,10 @@
-import User from '#models/user'
+import User from '#models/users/user'
 import { DateTime } from 'luxon'
 import hash from '@adonisjs/core/services/hash'
-import { sharedCache } from '#services/shared/cache_service'
 import { TokenService } from '#services/auth/token_service'
 import { BlacklistService } from '#services/security/blacklist_service'
 import { UserRole } from '#services/auth/role_service'
+import CacheService from '#start/cache'
 
 export class UserAnonymizationService {
   static async anonymize(user: User): Promise<boolean> {
@@ -13,7 +13,6 @@ export class UserAnonymizationService {
     user.merge({
       email: `deleted_${user.id}@internal.system`,
       name: 'User Deleted',
-      username: `deleted_user_${user.id}`,
       password: randomPassword,
       role: UserRole.DELETED,
       settings: null,
@@ -28,8 +27,7 @@ export class UserAnonymizationService {
     await user.save()
     await TokenService.revokeAllTokens(user)
     await BlacklistService.addToBlacklist(user)
-    await sharedCache.user.invalidateUser(user.id)
-
+    await CacheService.deleteSingle('users', user.id)
     return true
   }
 

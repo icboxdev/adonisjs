@@ -1,7 +1,6 @@
-import User from '#models/user'
+import User from '#models/users/user'
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import { Exception } from '@adonisjs/core/exceptions'
-import { sharedCache } from '#services/shared/cache_service'
 import CacheService from '#start/cache'
 
 interface TokenGenerationResult {
@@ -59,7 +58,7 @@ export class TokenService {
   static async revokeAllTokens(user: User): Promise<boolean> {
     try {
       await this.revokeAllAccessTokens(user)
-      await sharedCache.user.invalidateUser(user.id)
+      await CacheService.deleteSingle('users', user.id)
       return true
     } catch (error) {
       throw new Exception('Falha ao revogar tokens', { status: 500 })

@@ -1,28 +1,63 @@
 import app from '@adonisjs/core/services/app'
+import logger from '@adonisjs/core/services/logger'
+import { errors as vineErrors } from '@vinejs/vine'
 import { HttpContext, ExceptionHandler } from '@adonisjs/core/http'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
   /**
-   * In debug mode, the exception handler will display verbose errors
-   * with pretty printed stack traces.
+   * Exibe stacktrace apenas fora de produção
    */
   protected debug = !app.inProduction
 
   /**
-   * The method is used for handling errors and returning
-   * response to the client
+   * Tratamento centralizado de exceções
    */
-  async handle(error: unknown, ctx: HttpContext) {
-    return super.handle(error, ctx)
+  async handle(error: any, ctx: HttpContext) {
+    /**
+     * Erros de validação (VineJS)
+     */
+    if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+      return ctx.response.unprocessableEntity({
+        success: false,
+        message: 'Erro de validação',
+        errors: error.messages,
+      })
+    }
+
+    /**
+     * Exceções HTTP conhecidas (Exception, Unauthorized, Forbidden, etc)
+     */
+    if (error?.status) {
+      return ctx.response.status(error.status).send({
+        success: false,
+        message: error.message,
+        code: error.code,
+      })
+    }
+
+    /**
+     * Erro inesperado
+     * Não vazar detalhes em produção
+     */
+    logger.error(error)
+
+    return ctx.response.internalServerError({
+      success: false,
+      message: app.inProduction
+        ? 'Erro interno do servidor'
+        : (error as Error)?.message,
+    })
   }
 
   /**
-   * The method is used to report error to the logging service or
-   * the third party error monitoring service.
-   *
-   * @note You should not attempt to send a response from this method.
+   * Reporte de erros (logs / monitoramento)
    */
-  async report(error: unknown, ctx: HttpContext) {
-    return super.report(error, ctx)
+  async report(error: any) {
+    /**
+     * Em produção, logar apenas erros não tratados ou 5xx
+     */
+    if (!error?.status || error.status >= 500) {
+      logger.error(error)
+    }
   }
 }

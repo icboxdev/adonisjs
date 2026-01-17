@@ -1,20 +1,18 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
 export default class extends BaseSchema {
-  protected tableName = 'app_keys'
+  protected tableName = 'groups'
 
   async up() {
     this.schema.createTable(this.tableName, (table) => {
       table.increments('id')
-      table.string('description').notNullable()
-      table.text('value').notNullable().unique()
+      table.string('name').unique().notNullable().index()
+      table.string('description').nullable()
       table.boolean('is_active').notNullable().defaultTo(true)
-      table.jsonb('permission').nullable()
-      table.timestamp('expires_at').notNullable()
       table.timestamp('created_at')
       table.timestamp('updated_at')
 
-      table.comment('Gerenciamento de chaves de acesso')
+      table.comment('Grupos de acesso')
     })
   }
 

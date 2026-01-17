@@ -1,17 +1,19 @@
-import User from '#models/user'
-import { Exception } from '@adonisjs/core/exceptions'
+import User from '#models/users/user'
 import { DateTime } from 'luxon'
+import hash from '@adonisjs/core/services/hash'
+
+import BusinessException from '#exceptions/business_exception'
+
 import { PasswordService } from '#services/auth/password_service'
 import { EmailVerificationService } from '#services/auth/email_verification_service'
 import { UserService } from '#services/user/user_service'
 import { UserAnonymizationService } from '#services/user/user_anonymization_service'
 import { BlacklistService } from '#services/security/blacklist_service'
-import CacheService from '#start/cache'
-import { sharedCache } from '#services/shared/cache_service'
 import { TokenService } from '#services/auth/token_service'
 import { RoleService, UserRole } from '#services/auth/role_service'
 import { LoginProtectionService } from '#services/security/login_protection_service'
-import hash from '@adonisjs/core/services/hash'
+
+import CacheService from '#start/cache'
 
 interface LoginParams {
   username: string
@@ -28,65 +30,73 @@ export class AuthService {
   /* -------------------------------------------------------------------------- */
   /* AUTHENTICATION                                                             */
   /* -------------------------------------------------------------------------- */
-  // ADICIONAR no topo
-
-  // SUBSTITUIR o método login() por:
   static async login(params: LoginParams): Promise<LoginResult> {
     const { username, password, ip = 'unknown' } = params
 
     if (!username || !password) {
-      throw new Exception('Credenciais inválidas', { status: 401 })
+      throw BusinessException.unauthorized(
+        'Credenciais inválidas',
+        'INVALID_CREDENTIALS'
+      )
     }
 
-    // Verifica se pode fazer login
+    const identifier = username.trim().toLowerCase()
+
     const loginCheck = await LoginProtectionService.checkLoginAttempt({
-      identifier: username.trim().toLowerCase(),
+      identifier,
       ip,
     })
 
     if (!loginCheck.allowed) {
       if (loginCheck.isBlocked) {
-        throw new Exception(
-          'Conta temporariamente bloqueada devido a múltiplas tentativas de login. Verifique seu email.',
-          { status: 403 }
+        throw BusinessException.forbidden(
+          'Conta temporariamente bloqueada devido a múltiplas tentativas de login',
+          'LOGIN_TEMP_BLOCKED'
         )
       }
 
-      throw new Exception(
-        `Muitas tentativas de login. Tente novamente em alguns minutos. Tentativas restantes: ${loginCheck.attemptsRemaining}`,
-        { status: 429 }
+      throw BusinessException.tooManyRequests(
+        `Muitas tentativas de login. Tentativas restantes: ${loginCheck.attemptsRemaining}`,
+        'LOGIN_RATE_LIMIT'
       )
     }
 
-    const user = await User.query().where('username', username).orWhere('email', username).first()
+    const user = await User.query()
+      .where('email', identifier)
+      .first()
 
     if (!user || !UserService.isActive(user)) {
-      // Registra tentativa falha
       await LoginProtectionService.recordLoginAttempt({
-        identifier: username.trim().toLowerCase(),
+        identifier,
         ip,
         success: false,
       })
-      throw new Exception('Credenciais inválidas', { status: 401 })
+
+      throw BusinessException.unauthorized(
+        'Credenciais inválidas',
+        'INVALID_CREDENTIALS'
+      )
     }
 
-    const authUser = await User.verifyCredentials(username, password)
+    const authUser = await User.verifyCredentials(identifier, password)
 
     if (!authUser) {
-      // Registra tentativa falha com dados do usuário
       await LoginProtectionService.recordLoginAttempt({
-        identifier: username.trim().toLowerCase(),
+        identifier,
         ip,
         success: false,
         userName: user.name,
-        userEmail: user.email || user.username,
+        userEmail: user.email,
       })
-      throw new Exception('Credenciais inválidas', { status: 401 })
+
+      throw BusinessException.unauthorized(
+        'Credenciais inválidas',
+        'INVALID_CREDENTIALS'
+      )
     }
 
-    // Login bem-sucedido - limpa tentativas
     await LoginProtectionService.recordLoginAttempt({
-      identifier: username.trim().toLowerCase(),
+      identifier,
       ip,
       success: true,
     })
@@ -102,11 +112,11 @@ export class AuthService {
   }
 
   static async logout(user: User): Promise<boolean> {
-    return await TokenService.revokeAllTokens(user)
+    return TokenService.revokeAllTokens(user)
   }
 
   static async getMe(user: User): Promise<User> {
-    return await UserService.getMe(user)
+    return UserService.getMe(user)
   }
 
   /* -------------------------------------------------------------------------- */
@@ -135,31 +145,28 @@ export class AuthService {
   /* -------------------------------------------------------------------------- */
   /* USER MANAGEMENT (DELEGAÇÃO)                                                */
   /* -------------------------------------------------------------------------- */
-  static async createUser(payload: any) {
-    return await UserService.create(payload)
+  static createUser(payload: any) {
+    return UserService.create(payload)
   }
 
-  static async updateUser(user: User, payload: any) {
-    return await UserService.update(user, payload)
+  static updateUser(user: User, payload: any) {
+    return UserService.update(user, payload)
   }
 
-  static async deleteUser(user: User): Promise<boolean> {
-    return await UserService.delete(user)
+  static deleteUser(user: User): Promise<boolean> {
+    return UserService.delete(user)
   }
 
-  static async listUsers() {
-    return await UserService.list()
-  }
 
-  static async anonymizeUser(user: User): Promise<boolean> {
-    return await UserAnonymizationService.anonymize(user)
+  static anonymizeUser(user: User): Promise<boolean> {
+    return UserAnonymizationService.anonymize(user)
   }
 
   /* -------------------------------------------------------------------------- */
-  /* PASSWORD MANAGEMENT (DELEGAÇÃO)                                            */
+  /* PASSWORD MANAGEMENT                                                        */
   /* -------------------------------------------------------------------------- */
   static async requestPasswordReset(email: string, ip?: string): Promise<boolean> {
-    return await PasswordService.requestPasswordReset({ email, ip })
+    return PasswordService.requestPasswordReset({ email, ip })
   }
 
   static async updatePassword(
@@ -168,14 +175,18 @@ export class AuthService {
     currentPassword: string
   ): Promise<boolean> {
     const isPasswordValid = await hash.verify(user.password, currentPassword)
-    
+
     if (!isPasswordValid) {
-      throw new Exception('Senha atual inválida', { status: 400 })
+      throw BusinessException.badRequest(
+        'Senha atual inválida',
+        'INVALID_CURRENT_PASSWORD'
+      )
     }
 
     user.password = password
     await user.save()
-    await UserService.invalidateUserCache(user.id)
+
+    await CacheService.deleteSingle('users', user.id)
     return true
   }
 
@@ -185,25 +196,25 @@ export class AuthService {
     password: string
     ip?: string
   }): Promise<boolean> {
-    return await PasswordService.resetPassword(params)
+    return PasswordService.resetPassword(params)
   }
 
   /* -------------------------------------------------------------------------- */
-  /* EMAIL VERIFICATION (DELEGAÇÃO)                                             */
+  /* EMAIL VERIFICATION                                                         */
   /* -------------------------------------------------------------------------- */
   static async requestEmailVerification(user: User, ip?: string): Promise<boolean> {
-    return await EmailVerificationService.requestEmailVerification({ user, ip })
+    return EmailVerificationService.requestEmailVerification({ user, ip })
   }
 
   static async verifyEmail(email: string, token: string, ip?: string): Promise<boolean> {
-    return await EmailVerificationService.verifyEmail({ email, token, ip })
+    return EmailVerificationService.verifyEmail({ email, token, ip })
   }
 
   /* -------------------------------------------------------------------------- */
-  /* BLACKLIST (DELEGAÇÃO)                                                      */
+  /* BLACKLIST                                                                  */
   /* -------------------------------------------------------------------------- */
-  static async isBlacklisted(input: { email: string  }): Promise<boolean> {
-    return await BlacklistService.isBlacklisted(input)
+  static async isBlacklisted(input: { email: string }): Promise<boolean> {
+    return BlacklistService.isBlacklisted(input)
   }
 
   static async addToBlacklist(user: User): Promise<void> {
@@ -223,7 +234,7 @@ export class AuthService {
 
   private static async cacheUser(user: User): Promise<void> {
     await CacheService.set({
-      key: sharedCache.user.userKey(user.id),
+      key: `users:${user.id}`,
       value: user.serialize(),
       ttl: '1h',
     })

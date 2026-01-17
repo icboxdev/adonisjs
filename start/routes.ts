@@ -1,21 +1,8 @@
-/*
-|--------------------------------------------------------------------------
-| Routes file
-|--------------------------------------------------------------------------
-|
-| The routes file is used for defining the HTTP routes.
-|
-*/
-
 import router from '@adonisjs/core/services/router'
 import transmit from '@adonisjs/transmit/services/main'
 import { middleware } from './kernel.js'
-import AuthController from '#controllers/auth_controller'
-
-import '#routes/auth_routes_v1'
-import '#routes/sys_routes_v1'
-import '#routes/app_test'
-import '#routes/webhook_routes_v1'
+import AuthController from '#controllers/auth/auth_controller'
+import PreferencesController from '#controllers/preferences_controller'
 
 router.where('id', router.matchers.number())
 
@@ -37,10 +24,17 @@ router
   })
   .prefix('setup')
 
-// router
-//   .group(() => {
-//     router.resource('users', UsersController).apiOnly().as('admin.users')
-//     router.resource('keys', AppKeysController).apiOnly().as('admin.keys')
-//   })
-//   .prefix('admin')
-//   // .middleware(middleware.authRole(UserRole.ADMIN))
+  router.group(() => {
+    router.get('/:name',[PreferencesController, 'show'])
+    router.get('/', [PreferencesController, 'index'])
+    router.post('/', [PreferencesController, 'store'])
+    router.put('/:name', [PreferencesController, 'update'])
+    router.delete('/:name', [PreferencesController, 'delete'])
+  }).prefix('api/v1/preference')
+
+
+import '#routes/auth_routes_v1'
+import '#routes/sys_routes_v1'
+import '#routes/app_test'
+import '#routes/webhook_routes_v1'
+import '#routes/system_app_routes'

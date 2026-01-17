@@ -1,4 +1,4 @@
-import User from '#models/user'
+import User from '#models/users/user'
 import { RoleService, UserRole } from '#services/auth/role_service'
 import type { HttpContext } from '@adonisjs/core/http'
 import type { NextFn } from '@adonisjs/core/types/http'

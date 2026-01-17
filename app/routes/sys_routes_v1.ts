@@ -1,4 +1,4 @@
-import UsersController from '#controllers/users_controller'
+import UsersController from '#controllers/users/users_controller'
 import AppKeysController from '#controllers/app_keys_controller'
 
 import { middleware } from '#start/kernel'

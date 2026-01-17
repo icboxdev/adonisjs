@@ -1,27 +1,51 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import { AuthService } from '#services/auth/auth_services'
 import { UserService } from '#services/user/user_service'
-import { userCreateValidator, userUpdateValidator } from '#validators/app_validators'
 import { errors as vineErrors } from '@vinejs/vine'
 import { Exception } from '@adonisjs/core/exceptions'
 import logger from '@adonisjs/core/services/logger'
+import User from '#models/users/user'
+import { AuthCreateValidator, AuthUpdateValidator } from '#validators/auth/auth_validators'
 
 export default class UsersController {
-  async index({ response }: HttpContext) {
+
+  async index({ response, request }: HttpContext) {
     try {
-      const users = await UserService.list()
-      return response.ok(users)
+      const { field, value } = request.qs()
+      const allowedFields = ['name', 'email', 'role', 'is_active']
+
+      const query = User.query()
+
+      // Só entra se tiver field, value e o campo for permitido
+      if (field && value && allowedFields.includes(field)) {
+
+        if (field === 'is_active') {
+          // Para booleanos, usamos correspondência exata
+          query.where(field, value === 'true' || value === true).whereNot('is_deleted', true)
+        } else if (field === 'email') {
+          // Para buscar por email ou username
+          query.where(field, value.trim().toLowerCase()).whereNot('is_deleted', true)
+        } else {
+          //'%' para busca parcial (LIKE)
+          query.whereILike(field, `%${value}%`).whereNot('is_deleted', true)
+        }
+      }
+
+      const users = await query
+      return response.ok(users.map(user => user.serialize()))
+
     } catch (error) {
       return this.handleError(error, response, 'Falha ao buscar usuários')
     }
   }
 
+
   async store({ request, response }: HttpContext) {
     try {
-      const payload = await request.validateUsing(userCreateValidator)
+      const payload = await request.validateUsing(AuthCreateValidator)
 
       const isBlacklisted = await AuthService.isBlacklisted({
-        email: payload.email || payload.username,
+        email: payload.email,
       })
 
       if (isBlacklisted) {
@@ -62,7 +86,10 @@ export default class UsersController {
   async update({ params, request, response }: HttpContext) {
     try {
       const user = await UserService.findById(params.id)
-      const payload = await request.validateUsing(userUpdateValidator)
+      if (user.role === 'super') {
+        return response.badRequest({ message: 'Usuário não pode ser alterado' })
+      }
+      const payload = await request.validateUsing(AuthUpdateValidator)
 
       if (payload.email && payload.email !== user.email) {
         const isBlacklisted = await AuthService.isBlacklisted({
@@ -105,7 +132,9 @@ export default class UsersController {
           message: 'Usuário já foi anonimizado',
         })
       }
-
+      if (user.role === 'super') {
+        return response.badRequest({ message: 'Usuário não pode ser deletado' })
+      }
       await AuthService.anonymizeUser(user)
 
       return response.noContent()

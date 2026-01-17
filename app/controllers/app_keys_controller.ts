@@ -5,6 +5,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import logger from '@adonisjs/core/services/logger'
 
 export default class AppKeysController {
+
   async get_loggers({ response }: HttpContext) {
     try {
       const loggers = await AppKeyService.get_loggers()
@@ -70,4 +71,5 @@ export default class AppKeysController {
       return response.internalServerError({ message: 'Falha ao deletar a chave' })
     }
   }
+  
 }
